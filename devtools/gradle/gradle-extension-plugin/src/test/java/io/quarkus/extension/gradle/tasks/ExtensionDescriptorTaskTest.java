@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import io.quarkus.extension.gradle.QuarkusExtensionPlugin;
 import io.quarkus.extension.gradle.TestUtils;
 
 public class ExtensionDescriptorTaskTest {
@@ -36,6 +37,19 @@ public class ExtensionDescriptorTaskTest {
         File settingFile = new File(testProjectDir, "settings.gradle");
         String settingsContent = "rootProject.name = 'test'";
         TestUtils.writeFile(settingFile, settingsContent);
+    }
+
+    @Test
+    public void shouldBeUpToDateWhenInputsAndOutputsAreUnchanged() throws IOException {
+        TestUtils.writeFile(buildFile, TestUtils.getDefaultGradleBuildFileContent(true, Collections.emptyList(), ""));
+
+        BuildResult firstRun = runExtensionDescriptorTask();
+        assertThat(firstRun.task(":" + QuarkusExtensionPlugin.EXTENSION_DESCRIPTOR_TASK_NAME).getOutcome())
+                .isEqualTo(TaskOutcome.SUCCESS);
+
+        BuildResult secondRun = runExtensionDescriptorTask();
+        assertThat(secondRun.task(":" + QuarkusExtensionPlugin.EXTENSION_DESCRIPTOR_TASK_NAME).getOutcome())
+                .isEqualTo(TaskOutcome.UP_TO_DATE);
     }
 
     @Test
@@ -240,6 +254,14 @@ public class ExtensionDescriptorTaskTest {
         assertThat(extensionDescriptor.get("metadata").get("scm-url").asText())
                 .as("Check source location %s", extensionDescriptor.get("scm-url"))
                 .isEqualTo("https://github.com/some/repo");
+    }
+
+    private BuildResult runExtensionDescriptorTask() {
+        return GradleRunner.create()
+                .withPluginClasspath()
+                .withProjectDir(testProjectDir)
+                .withArguments(QuarkusExtensionPlugin.EXTENSION_DESCRIPTOR_TASK_NAME, "-S")
+                .build();
     }
 
 }
