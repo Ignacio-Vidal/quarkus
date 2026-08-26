@@ -13,6 +13,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -41,6 +42,7 @@ import org.gradle.api.artifacts.result.ResolvedDependencyResult;
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition;
 import org.gradle.api.attributes.Attribute;
 import org.gradle.api.file.ConfigurableFileCollection;
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFileProperty;
@@ -150,6 +152,37 @@ public abstract class QuarkusApplicationModelTask extends DefaultTask {
     @OutputFile
     public abstract RegularFileProperty getApplicationModel();
 
+    /**
+     * A relocatable rendering of {@link #getApplicationModel()}, in which absolute paths are replaced by
+     * a token plus the path relative to the corresponding root. Consumers declare this as their input
+     * instead of the model itself, so that their build cache keys do not depend on where the project is
+     * checked out or on the location of the Gradle dependency cache.
+     * <p>
+     * It is written as a separate file rather than in place because the model itself is handed to the
+     * Quarkus bootstrap as-is, outside this plugin, where the tokens would have no meaning.
+     *
+     * @see RelocatableApplicationModel
+     */
+    @OutputFile
+    public abstract RegularFileProperty getRelocatableApplicationModel();
+
+    /**
+     * The Gradle home directory, whose dependency cache holds the resolved location of every external
+     * dependency in the model. Declared {@code @Internal}: it is a root that paths are made relative
+     * to, so it must not itself contribute to any cache key.
+     */
+    @Internal
+    public abstract DirectoryProperty getGradleUserHomeDirectory();
+
+    /**
+     * The root directory of the build, which the other modules of a multi-module project live under.
+     * Their jars appear in this module's model, so it is a root in its own right - the project
+     * directory of this module does not contain them. Declared {@code @Internal} for the same reason
+     * as {@link #getGradleUserHomeDirectory()}.
+     */
+    @Internal
+    public abstract DirectoryProperty getRootDirectory();
+
     public QuarkusApplicationModelTask() {
         getProjectBuildFile().set(getProject().getBuildFile());
     }
@@ -178,7 +211,35 @@ public abstract class QuarkusApplicationModelTask extends DefaultTask {
         }
 
         DefaultApplicationModel model = modelBuilder.build();
-        ToolingUtils.serializeAppModel(model, getApplicationModel().get().getAsFile().toPath());
+        final Path serializedModel = getApplicationModel().get().getAsFile().toPath();
+        ToolingUtils.serializeAppModel(model, serializedModel);
+        writeRelocatableApplicationModel(serializedModel);
+    }
+
+    /**
+     * Writes the relocatable rendering of the serialized model that consumers use as their cache input.
+     * <p>
+     * The roots are the project and root directories, which this module's own directories and the jars
+     * of sibling modules live under, and the Gradle home, which the resolved locations of external
+     * dependencies live under. The build directory is listed separately because it can be configured to
+     * sit outside the project directory.
+     */
+    private void writeRelocatableApplicationModel(Path serializedModel) throws IOException {
+        final List<RelocatableApplicationModel.Root> roots = new ArrayList<>(4);
+        roots.add(new RelocatableApplicationModel.Root("${quarkus.build.dir}",
+                getLayout().getBuildDirectory().get().getAsFile().toPath()));
+        roots.add(new RelocatableApplicationModel.Root("${quarkus.project.dir}",
+                getLayout().getProjectDirectory().getAsFile().toPath()));
+        if (getGradleUserHomeDirectory().isPresent()) {
+            roots.add(new RelocatableApplicationModel.Root("${quarkus.gradle.user.home}",
+                    getGradleUserHomeDirectory().get().getAsFile().toPath()));
+        }
+        if (getRootDirectory().isPresent()) {
+            roots.add(new RelocatableApplicationModel.Root("${quarkus.root.dir}",
+                    getRootDirectory().get().getAsFile().toPath()));
+        }
+        RelocatableApplicationModel.write(serializedModel,
+                getRelocatableApplicationModel().get().getAsFile().toPath(), roots);
     }
 
     private ResolvedDependencyBuilder getProjectArtifact(DefaultProjectDescriptor projectDescriptor) {
