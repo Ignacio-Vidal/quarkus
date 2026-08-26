@@ -42,6 +42,7 @@ import org.gradle.api.artifacts.result.ResolvedDependencyResult;
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition;
 import org.gradle.api.attributes.Attribute;
 import org.gradle.api.file.ConfigurableFileCollection;
+import org.gradle.api.file.Directory;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.ProjectLayout;
@@ -183,6 +184,15 @@ public abstract class QuarkusApplicationModelTask extends DefaultTask {
     @Internal
     public abstract DirectoryProperty getRootDirectory();
 
+    /**
+     * The root directories of the builds included in this one, which lie outside
+     * {@link #getRootDirectory()} and whose modules can contribute artifacts to the model.
+     *
+     * @see #getGradleUserHomeDirectory()
+     */
+    @Internal
+    public abstract ListProperty<Directory> getIncludedBuildDirectories();
+
     public QuarkusApplicationModelTask() {
         getProjectBuildFile().set(getProject().getBuildFile());
     }
@@ -220,9 +230,10 @@ public abstract class QuarkusApplicationModelTask extends DefaultTask {
      * Writes the relocatable rendering of the serialized model that consumers use as their cache input.
      * <p>
      * The roots are the project and root directories, which this module's own directories and the jars
-     * of sibling modules live under, and the Gradle home, which the resolved locations of external
-     * dependencies live under. The build directory is listed separately because it can be configured to
-     * sit outside the project directory.
+     * of sibling modules live under, the Gradle home, which the resolved locations of external
+     * dependencies live under, and the root of each included build, which lies outside all of them. The
+     * build directory is listed separately because it can be configured to sit outside the project
+     * directory.
      */
     private void writeRelocatableApplicationModel(Path serializedModel) throws IOException {
         final List<RelocatableApplicationModel.Root> roots = new ArrayList<>(4);
@@ -237,6 +248,14 @@ public abstract class QuarkusApplicationModelTask extends DefaultTask {
         if (getRootDirectory().isPresent()) {
             roots.add(new RelocatableApplicationModel.Root("${quarkus.root.dir}",
                     getRootDirectory().get().getAsFile().toPath()));
+        }
+        // an included build lies outside the root directory of the build including it, so artifacts it
+        // contributes need a root of their own; numbered by declaration order, which is stable for a
+        // given build and independent of where any of it is checked out
+        final List<Directory> includedBuilds = getIncludedBuildDirectories().get();
+        for (int i = 0; i < includedBuilds.size(); i++) {
+            roots.add(new RelocatableApplicationModel.Root("${quarkus.included.build." + i + "}",
+                    includedBuilds.get(i).getAsFile().toPath()));
         }
         RelocatableApplicationModel.write(serializedModel,
                 getRelocatableApplicationModel().get().getAsFile().toPath(), roots);
