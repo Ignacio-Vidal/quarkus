@@ -502,7 +502,10 @@ public class QuarkusPlugin implements Plugin<Project> {
                                 project.getObjects().mapProperty(String.class, Object.class)
                                         .convention(quarkusExt.manifest().getAttributes()),
                                 project.getObjects().mapProperty(String.class, Attributes.class)
-                                        .convention(quarkusExt.getAttributes())));
+                                        .convention(quarkusExt.getAttributes()),
+                                // captured now: the configuration cache forbids reaching the project
+                                // from a task action at execution time
+                                ToolingUtils.projectRoots(project)));
 
                         // also make each task use the JUnit platform since it's the only supported test environment
                         t.useJUnitPlatform();

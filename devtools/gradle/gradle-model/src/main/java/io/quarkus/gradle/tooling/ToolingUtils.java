@@ -169,8 +169,29 @@ public class ToolingUtils {
     public static Path serializeAppModel(ApplicationModel appModel, Task context, boolean test) throws IOException {
         final Path serializedModel = context.getTemporaryDir().toPath()
                 .resolve("quarkus-app" + (test ? "-test" : "") + "-model.dat");
-        ApplicationModelSerializer.serialize(appModel, serializedModel, projectRoots(context.getProject()));
+        serializeForForkedJvm(appModel, serializedModel);
         return serializedModel;
+    }
+
+    /**
+     * Serializes a model for a JVM that will read it back knowing nothing but the file's path - the
+     * forked JVMs behind {@code test}, {@code quarkusIntTest} and dev mode, which receive it through
+     * {@link io.quarkus.bootstrap.BootstrapConstants#SERIALIZED_TEST_APP_MODEL} and resolve it with a
+     * bare {@code deserialize(Path)}.
+     * <p>
+     * Such a reader can recover the project and build directories from the file's own location and the
+     * root of the build from the recorded offset, but nothing locates a build included through
+     * {@code includeBuild(...)}: it lies outside the root at a place the including build chooses freely.
+     * A model carrying included build tokens is therefore unreadable there, so this writes the paths out
+     * as they are.
+     * <p>
+     * The file is consumed immediately by a JVM this build launches and is never cached, so leaving it
+     * checkout-dependent costs nothing. Models that <em>are</em> fingerprinted - the one
+     * {@code QuarkusApplicationModelTask} produces - keep their tokens and their relocation.
+     */
+    public static Path serializeForForkedJvm(ApplicationModel appModel, Path serializedModelPath) throws IOException {
+        ApplicationModelSerializer.serialize(appModel, serializedModelPath, List.of());
+        return serializedModelPath;
     }
 
     /**

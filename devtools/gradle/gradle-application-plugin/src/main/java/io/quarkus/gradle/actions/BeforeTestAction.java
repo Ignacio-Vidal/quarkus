@@ -6,6 +6,7 @@ import static io.quarkus.runtime.LaunchMode.TEST;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.stream.Collectors;
@@ -20,6 +21,7 @@ import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.testing.Test;
 
 import io.quarkus.bootstrap.BootstrapConstants;
+import io.quarkus.bootstrap.app.ApplicationModelRelocation;
 import io.quarkus.bootstrap.model.ApplicationModel;
 import io.quarkus.gradle.tasks.EffectiveConfig;
 import io.quarkus.gradle.tasks.EffectiveConfigProvider;
@@ -37,13 +39,15 @@ public class BeforeTestAction implements Action<Task> {
     private final QuarkusPluginExtensionView extensionView;
     private final MapProperty<String, Object> manifestAttributes;
     private final MapProperty<String, Attributes> manifestSections;
+    private final List<ApplicationModelRelocation.Root> relocationRoots;
 
     public BeforeTestAction(File projectDir, FileCollection combinedOutputSourceDirs,
             Provider<RegularFile> applicationModelPath, Provider<File> nativeRunnerPath,
             FileCollection mainSourceSetClassesDir,
             QuarkusPluginExtensionView extensionView,
             MapProperty<String, Object> manifestAttributes,
-            MapProperty<String, Attributes> manifestSections) {
+            MapProperty<String, Attributes> manifestSections,
+            List<ApplicationModelRelocation.Root> relocationRoots) {
         this.projectDir = projectDir;
         this.combinedOutputSourceDirs = combinedOutputSourceDirs;
         this.applicationModelPath = applicationModelPath;
@@ -52,6 +56,7 @@ public class BeforeTestAction implements Action<Task> {
         this.extensionView = extensionView;
         this.manifestAttributes = manifestAttributes;
         this.manifestSections = manifestSections;
+        this.relocationRoots = relocationRoots;
 
     }
 
@@ -62,7 +67,7 @@ public class BeforeTestAction implements Action<Task> {
             final Map<String, Object> props = task.getSystemProperties();
 
             final Path serializedModel = applicationModelPath.get().getAsFile().toPath();
-            ApplicationModel applicationModel = ToolingUtils.deserializeAppModel(serializedModel);
+            ApplicationModel applicationModel = ToolingUtils.deserializeAppModel(serializedModel, relocationRoots);
 
             EffectiveConfig effectiveConfig = effectiveProvider().buildEffectiveConfiguration(applicationModel,
                     new HashMap<>());
@@ -71,7 +76,11 @@ public class BeforeTestAction implements Action<Task> {
             config.getOptionalValue(TEST.getProfileKey(), String.class)
                     .ifPresent(value -> props.put(TEST.getProfileKey(), value));
 
-            props.put(BootstrapConstants.SERIALIZED_TEST_APP_MODEL, serializedModel.toString());
+            // the cached model carries relocation tokens, and the forked test JVM resolves it with a bare
+            // deserialize(Path) that cannot locate an included build; hand it a resolved copy instead
+            final Path forkedModel = task.getTemporaryDir().toPath().resolve("quarkus-app-test-model.dat");
+            ToolingUtils.serializeForForkedJvm(applicationModel, forkedModel);
+            props.put(BootstrapConstants.SERIALIZED_TEST_APP_MODEL, forkedModel.toString());
 
             StringJoiner outputSourcesDir = new StringJoiner(",");
             for (File outputSourceDir : combinedOutputSourceDirs.getFiles()) {
