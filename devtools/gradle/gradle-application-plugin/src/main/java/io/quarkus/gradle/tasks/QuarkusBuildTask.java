@@ -210,9 +210,27 @@ public abstract class QuarkusBuildTask extends QuarkusTaskWithExtensionView {
 
     }
 
-    @InputFile
-    @PathSensitive(PathSensitivity.RELATIVE)
+    /**
+     * The serialized application model. Deliberately {@code @Internal}: the file embeds absolute
+     * filesystem paths, so hashing it as an {@code @InputFile} would tie the build cache key to the
+     * checkout directory and to {@code GRADLE_USER_HOME}, making entries produced in one working
+     * directory unusable from another. {@link #getRelocatableApplicationModel()} carries its content
+     * as a relocatable input instead.
+     */
+    @Internal
     public abstract RegularFileProperty getApplicationModel();
+
+    /**
+     * The relocatable rendering of {@link #getApplicationModel()} produced by
+     * {@code QuarkusApplicationModelTask}, in which absolute paths are replaced by tokens. This is what
+     * makes the cache key of this task independent of where the project is checked out.
+     * <p>
+     * {@code @PathSensitive(NONE)} because only the contents matter: the file necessarily lives inside
+     * the build directory of whichever checkout produced it.
+     */
+    @InputFile
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract RegularFileProperty getRelocatableApplicationModel();
 
     ApplicationModel resolveAppModelForBuild() {
         try {
