@@ -184,23 +184,33 @@ public abstract class AbstractJarBuilder<T extends BuildItem> implements JarBuil
             Predicate<String> ignoredEntriesPredicate)
             throws IOException {
 
+        // Within each group, entries are added in a sorted order: the order of build items depends on the order in
+        // which build steps ran, and the order of the archive entries would otherwise differ between identical builds.
+
         // transformed classes first (highest priority - these replace the original classes)
+        List<TransformedClassesBuildItem.TransformedClass> transformedInOrder = new ArrayList<>();
         for (Set<TransformedClassesBuildItem.TransformedClass> transformed : transformedClasses
                 .getTransformedClassesByJar().values()) {
-            for (TransformedClassesBuildItem.TransformedClass i : transformed) {
-                if (i.getData() != null) {
-                    archiveCreator.addFile(i.getData(), i.getFileName());
-                }
+            transformedInOrder.addAll(transformed);
+        }
+        transformedInOrder.sort(Comparator.comparing(TransformedClassesBuildItem.TransformedClass::getFileName));
+        for (TransformedClassesBuildItem.TransformedClass i : transformedInOrder) {
+            if (i.getData() != null) {
+                archiveCreator.addFile(i.getData(), i.getFileName());
             }
         }
 
         // then, generated classes and resources
-        for (GeneratedClassBuildItem i : generatedClasses) {
+        List<GeneratedClassBuildItem> generatedClassesInOrder = new ArrayList<>(generatedClasses);
+        generatedClassesInOrder.sort(Comparator.comparing(GeneratedClassBuildItem::internalName));
+        for (GeneratedClassBuildItem i : generatedClassesInOrder) {
             String fileName = fromClassNameToResourceName(i.internalName());
             archiveCreator.addFile(i.getClassData(), fileName, ArchiveCreator.CURRENT_APPLICATION);
         }
 
-        for (GeneratedResourceBuildItem i : generatedResources) {
+        List<GeneratedResourceBuildItem> generatedResourcesInOrder = new ArrayList<>(generatedResources);
+        generatedResourcesInOrder.sort(Comparator.comparing(GeneratedResourceBuildItem::getName));
+        for (GeneratedResourceBuildItem i : generatedResourcesInOrder) {
             if (ignoredEntriesPredicate.test(i.getName())) {
                 continue;
             }
@@ -220,7 +230,7 @@ public abstract class AbstractJarBuilder<T extends BuildItem> implements JarBuil
 
     protected static void writeConcatenatedEntries(ArchiveCreator archiveCreator,
             Map<String, List<byte[]>> concatenatedEntries) throws IOException {
-        for (Map.Entry<String, List<byte[]>> entry : concatenatedEntries.entrySet()) {
+        for (Map.Entry<String, List<byte[]>> entry : new TreeMap<>(concatenatedEntries).entrySet()) {
             archiveCreator.addFile(entry.getValue(), entry.getKey());
         }
     }
