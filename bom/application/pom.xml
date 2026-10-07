@@ -29,8 +29,8 @@
         <resteasy-microprofile.version>3.0.1.Final</resteasy-microprofile.version>
         <resteasy-spring-web.version>3.2.0.Final</resteasy-spring-web.version>
         <resteasy.version>7.0.5.Final</resteasy.version>
-        <opentelemetry-instrumentation.version>2.29.0-alpha</opentelemetry-instrumentation.version> <!-- OTel SDK 1.63.0-->
-        <opentelemetry-semconv.version>1.40.0-alpha</opentelemetry-semconv.version>
+        <opentelemetry-instrumentation.version>2.31.1-alpha</opentelemetry-instrumentation.version> <!-- OTel SDK 1.65.0-->
+        <opentelemetry-semconv.version>1.43.0-alpha</opentelemetry-semconv.version>
         <quarkus-http.version>6.0.0.Alpha4</quarkus-http.version>
         <micrometer.version>1.17.1</micrometer.version><!-- keep in sync with hdrhistogram: https://central.sonatype.com/artifact/io.micrometer/micrometer-core -->
         <hdrhistogram.version>2.2.2</hdrhistogram.version><!-- keep in sync with micrometer -->
@@ -45,12 +45,13 @@
         <microprofile-rest-client.version>4.0</microprofile-rest-client.version>
         <microprofile-jwt.version>2.1</microprofile-jwt.version>
         <microprofile-lra.version>2.0.2</microprofile-lra.version>
-        <microprofile-openapi.version>4.2-RC4</microprofile-openapi.version>
+        <microprofile-openapi.version>4.2-RC5</microprofile-openapi.version>
         <smallrye-common.version>2.20.0</smallrye-common.version>
         <smallrye-config.version>4.0.0</smallrye-config.version> <!-- keep in sync with microprofile-config-api -->
         <smallrye-health.version>4.3.0</smallrye-health.version>
         <smallrye-modules.version>1.0.beta1</smallrye-modules.version>
         <smallrye-open-api.version>4.4.0-alpha3</smallrye-open-api.version>
+        <smallrye-serial.version>1.0.beta6</smallrye-serial.version>
         <smallrye-graphql.version>3.0.0.Beta7</smallrye-graphql.version>
         <smallrye-fault-tolerance.version>7.0.0</smallrye-fault-tolerance.version>
         <smallrye-jwt.version>4.6.4</smallrye-jwt.version>
@@ -89,7 +90,7 @@
         <plexus-component-annotations.version>2.1.0</plexus-component-annotations.version>
         <graal-sdk.version>25.0.4.1</graal-sdk.version>
         <gizmo.version>1.10.1</gizmo.version>
-        <gizmo2.version>2.3.0</gizmo2.version>
+        <gizmo2.version>2.3.1</gizmo2.version>
         <jackson-bom.version>3.1.4</jackson-bom.version>
         <jackson2-bom.version>2.22.2</jackson2-bom.version>
         <commons-logging-jboss-logging.version>2.0.0.Final</commons-logging-jboss-logging.version>
@@ -99,7 +100,7 @@
         <!-- See root POM for hibernate-orm.version, hibernate-reactive.version, hibernate-validator.version,
              hibernate-search.version, antlr.version, bytebuddy.version -->
         <narayana.version>7.3.4.Final</narayana.version>
-        <narayana-lra.version>1.2.0.Final</narayana-lra.version>
+        <narayana-lra.version>2.0.1.Final</narayana-lra.version>
         <agroal.version>3.2.1</agroal.version>
         <jboss-transaction-spi.version>8.0.0.Final</jboss-transaction-spi.version>
         <elasticsearch-opensource-components.version>9.4.7</elasticsearch-opensource-components.version>
@@ -110,7 +111,7 @@
         <slf4j-jboss-logmanager.version>2.0.2.Final</slf4j-jboss-logmanager.version>
         <wildfly-common.version>2.0.1</wildfly-common.version>
         <wildfly-client-config.version>1.0.1.Final</wildfly-client-config.version>
-        <wildfly-elytron.version>2.9.2.SP1</wildfly-elytron.version>
+        <wildfly-elytron.version>2.9.4.Final</wildfly-elytron.version>
         <jboss-marshalling.version>2.3.0</jboss-marshalling.version>
         <jboss-threads.version>3.10.1</jboss-threads.version>
         <vertx.version>5.1.8</vertx.version>
@@ -146,7 +147,7 @@
         <kafka.version>4.2.1</kafka.version>
         <lz4.version>1.11.1</lz4.version> <!-- dependency of the kafka-clients that could be overridden by other imported BOMs in the platform -->
         <snappy.version>1.1.10.8</snappy.version>
-        <strimzi-test-container.version>0.116.0</strimzi-test-container.version>
+        <strimzi-test-container.version>0.117.0</strimzi-test-container.version>
         <!-- Scala is used by Kafka so we need to choose a compatible version -->
         <scala.version>2.13.16</scala.version>
         <aws-lambda-java.version>1.4.0</aws-lambda-java.version>
@@ -155,7 +156,7 @@
         <cloudevents-api.version>3.0.0</cloudevents-api.version>
         <azure-functions-java-library.version>3.3.0</azure-functions-java-library.version>
         <azure-functions-java-spi.version>1.1.0</azure-functions-java-spi.version>
-        <kotlin.version>2.4.10</kotlin.version>
+        <kotlin.version>2.4.20</kotlin.version>
         <kotlin.coroutine.version>1.11.0</kotlin.coroutine.version>
         <kotlin-serialization.version>1.11.0</kotlin-serialization.version>
         <kotlin-metadata.version>0.9.0</kotlin-metadata.version>
@@ -182,7 +183,7 @@
         <quarkus-spring-security-api.version>7.1.SP1</quarkus-spring-security-api.version>
         <quarkus-spring-boot-api.version>4.1.SP1</quarkus-spring-boot-api.version>
         <quarkus-spring-test-api.version>4.1</quarkus-spring-test-api.version>
-        <mockito.version>5.21.0</mockito.version>
+        <mockito.version>5.24.0</mockito.version>
         <jna.version>5.8.0</jna.version><!-- should satisfy both testcontainers and mongodb -->
         <quarkus-security.version>2.3.2</quarkus-security.version>
         <keycloak-client.version>26.0.12</keycloak-client.version>
@@ -200,7 +201,7 @@
         <log4j2-jboss-logmanager.version>2.0.1.Final</log4j2-jboss-logmanager.version>
         <log4j2-api.version>2.26.1</log4j2-api.version>
         <avro.version>1.12.2</avro.version>
-        <apicurio-registry.version>3.3.2</apicurio-registry.version>
+        <apicurio-registry.version>3.3.3</apicurio-registry.version>
         <testcontainers.version>2.0.5</testcontainers.version> <!-- Make sure to also update docker-java.version to match its needs -->
         <docker-java.version>3.7.1</docker-java.version> <!-- must be the version Testcontainers use: https://central.sonatype.com/artifact/org.testcontainers/testcontainers -->
         <!-- Check the compatibility matrix (https://github.com/opensearch-project/opensearch-testcontainers) before upgrading: -->
@@ -219,7 +220,7 @@
         <mime4j.version>0.8.12</mime4j.version>
         <mutiny-zero.version>1.3.1</mutiny-zero.version>
         <pulsar-client.version>4.2.1</pulsar-client.version>
-        <async-http-client.version>2.16.0</async-http-client.version>
+        <async-http-client.version>2.16.1</async-http-client.version>
         <!-- keep in-sync, if possible, with Micrometer registry Prometheus -->
         <prometheus.version>0.16.0</prometheus.version>
         <!-- Dev UI -->
@@ -3788,6 +3789,11 @@
             </dependency>
             <dependency>
                 <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-test-opentelemetry</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.quarkus</groupId>
                 <artifactId>quarkus-test-security</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -4498,6 +4504,11 @@
                 <groupId>io.smallrye.modules</groupId>
                 <artifactId>smallrye-modules</artifactId>
                 <version>${smallrye-modules.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.smallrye.serial</groupId>
+                <artifactId>smallrye-serial</artifactId>
+                <version>${smallrye-serial.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.smallrye</groupId>

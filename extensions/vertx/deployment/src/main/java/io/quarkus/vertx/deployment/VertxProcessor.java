@@ -20,6 +20,7 @@ import org.jboss.jandex.Type;
 import org.jboss.jandex.Type.Kind;
 import org.jboss.logging.Logger;
 
+import io.quarkus.arc.CurrentContextFactory;
 import io.quarkus.arc.deployment.AdditionalBeanBuildItem;
 import io.quarkus.arc.deployment.AutoAddScopeBuildItem;
 import io.quarkus.arc.deployment.BeanRegistrationPhaseBuildItem;
@@ -36,7 +37,8 @@ import io.quarkus.arc.processor.InvokerBuilder;
 import io.quarkus.arc.processor.InvokerInfo;
 import io.quarkus.arc.processor.KotlinUtils;
 import io.quarkus.arc.spi.NonBlockingProvider;
-import io.quarkus.bootstrap.classloading.QuarkusClassLoader;
+import io.quarkus.core.Phase;
+import io.quarkus.core.deployment.service.ServiceRegistrar;
 import io.quarkus.deployment.Capabilities;
 import io.quarkus.deployment.Capability;
 import io.quarkus.deployment.Feature;
@@ -65,6 +67,7 @@ import io.quarkus.vertx.ConsumeEvent;
 import io.quarkus.vertx.core.deployment.CoreVertxBuildItem;
 import io.quarkus.vertx.deployment.spi.EventConsumerInvokerCustomizerBuildItem;
 import io.quarkus.vertx.runtime.EventConsumerInfo;
+import io.quarkus.vertx.runtime.VertxCurrentContextFactory;
 import io.quarkus.vertx.runtime.VertxEventBusConsumerRecorder;
 import io.quarkus.vertx.runtime.VertxNonBlockingProvider;
 import io.quarkus.vertx.runtime.VertxProducer;
@@ -133,11 +136,15 @@ class VertxProcessor {
     }
 
     @BuildStep
-    @Record(ExecutionTime.STATIC_INIT)
     void currentContextFactory(BuildProducer<CurrentContextFactoryBuildItem> currentContextFactory,
-            VertxBuildConfig buildConfig, VertxEventBusConsumerRecorder recorder) {
+            VertxBuildConfig buildConfig, ServiceRegistrar reg) {
         if (buildConfig.customizeArcContext()) {
-            currentContextFactory.produce(new CurrentContextFactoryBuildItem(recorder.currentContextFactory()));
+            reg
+                    .forService(CurrentContextFactory.class)
+                    .atPhase(Phase.STATIC_INIT)
+                    .onStart(ctx -> new VertxCurrentContextFactory());
+            currentContextFactory.produce(new CurrentContextFactoryBuildItem(
+                    reg.staticInitServiceAsRuntimeValue(CurrentContextFactory.class)));
         }
     }
 
@@ -271,11 +278,9 @@ class VertxProcessor {
         NativeImageConfigBuildItem.Builder builder = NativeImageConfigBuildItem.builder();
 
         builder.addRuntimeInitializedClass("io.vertx.core.http.impl.http1.Http1ServerResponse")
-                .addRuntimeInitializedClass("io.vertx.core.parsetools.impl.RecordParserImpl");
-
-        if (QuarkusClassLoader.isClassPresentAtRuntime("io.vertx.ext.web.client.impl.MultipartFormUpload")) {
-            builder.addRuntimeInitializedClass("io.vertx.ext.web.client.impl.MultipartFormUpload");
-        }
+                .addRuntimeInitializedClass("io.vertx.core.parsetools.impl.RecordParserImpl")
+                // Holds a static UnpooledByteBufAllocator which must not end up in the image heap
+                .addRuntimeInitializedClass("io.vertx.core.http.impl.ClientMultipartFormUpload");
 
         return builder.build();
     }
