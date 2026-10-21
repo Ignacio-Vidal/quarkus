@@ -36,12 +36,12 @@ import io.quarkus.arc.deployment.GeneratedBeanGizmo2Adaptor;
 import io.quarkus.arc.deployment.SyntheticBeanBuildItem;
 import io.quarkus.arc.deployment.UnremovableBeanBuildItem;
 import io.quarkus.arc.impl.Reflections;
+import io.quarkus.core.Phase;
+import io.quarkus.core.deployment.service.ServiceRegistrar;
 import io.quarkus.deployment.Capabilities;
 import io.quarkus.deployment.Capability;
 import io.quarkus.deployment.annotations.BuildProducer;
 import io.quarkus.deployment.annotations.BuildStep;
-import io.quarkus.deployment.annotations.ExecutionTime;
-import io.quarkus.deployment.annotations.Record;
 import io.quarkus.deployment.builditem.CombinedIndexBuildItem;
 import io.quarkus.deployment.builditem.NativeImageFeatureBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
@@ -52,7 +52,6 @@ import io.quarkus.gizmo2.ClassOutput;
 import io.quarkus.gizmo2.Const;
 import io.quarkus.gizmo2.Expr;
 import io.quarkus.gizmo2.Gizmo;
-import io.quarkus.gizmo2.LambdaStrategy;
 import io.quarkus.gizmo2.LocalVar;
 import io.quarkus.gizmo2.ParamVar;
 import io.quarkus.gizmo2.Reflection2Gizmo;
@@ -61,8 +60,8 @@ import io.quarkus.gizmo2.desc.MethodDesc;
 import io.quarkus.jackson.JacksonMixin;
 import io.quarkus.jackson.JsonMapperBuilderCustomizer;
 import io.quarkus.jackson.runtime.ConfigurationCustomizer;
+import io.quarkus.jackson.runtime.JacksonBeanCreator;
 import io.quarkus.jackson.runtime.JacksonBuildTimeConfig;
-import io.quarkus.jackson.runtime.JacksonRecorder;
 import io.quarkus.jackson.runtime.JacksonSupport;
 import io.quarkus.jackson.runtime.JsonMapperProducer;
 import io.quarkus.jackson.runtime.VertxHybridPoolJsonFactoryBuilderCustomizer;
@@ -359,7 +358,6 @@ public class JacksonProcessor {
 
         ClassOutput classOutput = new GeneratedBeanGizmo2Adaptor(generatedBeans);
         Gizmo g = Gizmo.create(classOutput)
-                .withLambdaStrategy(LambdaStrategy.ANONYMOUS_CLASS)
                 .withDebugInfo(false)
                 .withParameters(false);
         g.class_("io.quarkus.jackson.customizer.RegisterSerializersAndDeserializersCustomizer", cc -> {
@@ -443,9 +441,8 @@ public class JacksonProcessor {
         });
     }
 
-    @Record(ExecutionTime.STATIC_INIT)
     @BuildStep
-    public void supportMixins(JacksonRecorder recorder,
+    public void supportMixins(ServiceRegistrar serviceRegistrar,
             CombinedIndexBuildItem combinedIndexBuildItem,
             BuildProducer<SyntheticBeanBuildItem> syntheticBeans,
             BuildProducer<ReflectiveClassBuildItem> reflectiveClass) {
@@ -486,20 +483,32 @@ public class JacksonProcessor {
         if (mixinsMap.isEmpty()) {
             return;
         }
+        Map<Class<?>, Class<?>> mixins = Map.copyOf(mixinsMap);
+        serviceRegistrar
+                .forService(JsonMapperBuilderCustomizer.class, "mixins")
+                .atPhase(Phase.STATIC_INIT)
+                .onStart(ctx -> JacksonBeanCreator.mixinsCustomizer(mixins));
+
         syntheticBeans.produce(SyntheticBeanBuildItem.configure(JsonMapperBuilderCustomizer.class)
                 .scope(Singleton.class)
-                .supplier(recorder.customizerSupplier(mixinsMap))
+                .serviceValue(JsonMapperBuilderCustomizer.class, "mixins")
                 .done());
     }
 
-    @Record(ExecutionTime.STATIC_INIT)
     @BuildStep
-    public SyntheticBeanBuildItem jacksonSupport(JacksonRecorder recorder,
+    public SyntheticBeanBuildItem jacksonSupport(ServiceRegistrar serviceRegistrar,
             JacksonBuildTimeConfig jacksonBuildTimeConfig) {
+        String propertyNamingStrategyClassName = determinePropertyNamingStrategyClassName(jacksonBuildTimeConfig)
+                .orElse(null);
+        serviceRegistrar
+                .forService(JacksonSupport.class)
+                .atPhase(Phase.STATIC_INIT)
+                .onStart(ctx -> JacksonBeanCreator.jacksonSupport(propertyNamingStrategyClassName));
+
         return SyntheticBeanBuildItem
                 .configure(JacksonSupport.class)
                 .scope(Singleton.class)
-                .supplier(recorder.supplier(determinePropertyNamingStrategyClassName(jacksonBuildTimeConfig)))
+                .serviceValue(JacksonSupport.class)
                 .done();
     }
 

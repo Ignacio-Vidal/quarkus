@@ -46,6 +46,13 @@ public interface OidcClientConfig extends OidcClientCommonConfig {
     Optional<Duration> refreshTokenTimeSkew();
 
     /**
+     * Minimum remaining lifespan required to reuse the access token being refreshed in the background,
+     * instead of waiting for the refresh to complete. Its value must be less than
+     * {@link #refreshTokenTimeSkew()}.
+     */
+    Optional<Duration> minRemainingAccessTokenLifespan();
+
+    /**
      * Access token expiration period relative to the current time.
      * This property is only checked when an access token grant response
      * does not include an access token expiration property.
@@ -192,6 +199,19 @@ public interface OidcClientConfig extends OidcClientCommonConfig {
      * but not when you use the {@link OidcClient#getTokens()} API directly.
      */
     Optional<Duration> refreshInterval();
+
+    /**
+     * Maximum number of sets of additional grant parameters for which an OIDC client filter or a token producer,
+     * such as {@code TokenProvider}, caches the tokens.
+     * Tokens requested with additional grant parameters, for example, with different scopes or subject tokens
+     * passed to {@code TokenProvider#getAccessToken(Map)}, are cached per set of parameters.
+     * This number is approximate, the cache can briefly exceed it when tokens are requested concurrently.
+     * This property is not relevant when tokens are acquired with the configured grant only, without additional
+     * grant parameters, because such tokens are always cached.
+     * Neither does it apply when the {@link OidcClient} API is used directly.
+     */
+    @WithDefault("15")
+    int tokenCacheMaxSize();
 
     /**
      * Creates {@link OidcClientConfigBuilder} builder populated with documented default values.

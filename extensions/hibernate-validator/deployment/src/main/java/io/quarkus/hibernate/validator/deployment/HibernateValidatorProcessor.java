@@ -97,6 +97,7 @@ import io.quarkus.deployment.builditem.NativeImageFeatureBuildItem;
 import io.quarkus.deployment.builditem.RunTimeConfigBuilderBuildItem;
 import io.quarkus.deployment.builditem.ShutdownContextBuildItem;
 import io.quarkus.deployment.builditem.StaticInitConfigBuilderBuildItem;
+import io.quarkus.deployment.builditem.nativeimage.ConstantBootstrapBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.NativeImageResourceBundleBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveFieldBuildItem;
@@ -108,7 +109,6 @@ import io.quarkus.deployment.recording.RecorderContext;
 import io.quarkus.deployment.util.AsmUtil;
 import io.quarkus.gizmo2.Const;
 import io.quarkus.gizmo2.Gizmo;
-import io.quarkus.gizmo2.LambdaStrategy;
 import io.quarkus.gizmo2.LocalVar;
 import io.quarkus.gizmo2.ParamVar;
 import io.quarkus.gizmo2.StaticFieldVar;
@@ -259,6 +259,7 @@ class HibernateValidatorProcessor {
             BuildProducer<GeneratedClassBuildItem> generatedClass,
             BuildProducer<GeneratedResourceBuildItem> generatedResource,
             BuildProducer<GeneratedServiceProviderBuildItem> generatedServiceProviders,
+            BuildProducer<ConstantBootstrapBuildItem> constantBootstraps,
             BuildProducer<ReflectiveClassBuildItem> reflectiveClass,
             BuildProducer<StaticInitConfigBuilderBuildItem> staticInitConfigBuilder,
             BuildProducer<RunTimeConfigBuilderBuildItem> runTimeConfigBuilder) {
@@ -325,6 +326,7 @@ class HibernateValidatorProcessor {
         // we might be able to do some more advanced surgery with Jandex evolution but for now
         // that's the best we can do
         Set<DotName> configComponentsInterfacesToRegisterForReflection = new HashSet<>();
+        Set<DotName> mappingsRequiringValidation = new HashSet<>();
         for (DotName constrainedConfigMapping : constrainedConfigMappings) {
             if (!embeddingMap.containsKey(constrainedConfigMapping)) {
                 // should never happen but let's be safe
@@ -334,6 +336,7 @@ class HibernateValidatorProcessor {
             for (GeneratedConfigClassBuildItem configClass : embeddingMap.get(constrainedConfigMapping).values()) {
                 unremovableBeans.produce(UnremovableBeanBuildItem.beanTypes(configClass.getConfigClass()));
                 configComponentsInterfacesToRegisterForReflection.addAll(configClass.getInterfaces());
+                mappingsRequiringValidation.add(DotName.createSimple(configClass.getConfigClass()));
             }
         }
         reflectiveClass.produce(ReflectiveClassBuildItem
@@ -344,8 +347,7 @@ class HibernateValidatorProcessor {
 
         String builderClassName = HibernateBeanValidationConfigValidator.class.getName() + "Builder";
         Gizmo gizmo = Gizmo.create(new GeneratedClassGizmo2Adaptor(generatedClass, generatedResource, generatedServiceProviders,
-                true))
-                .withLambdaStrategy(LambdaStrategy.ANONYMOUS_CLASS)
+                constantBootstraps, true))
                 .withDebugInfo(false)
                 .withParameters(false);
         gizmo.class_(builderClassName, cc -> {
@@ -365,8 +367,13 @@ class HibernateValidatorProcessor {
                             configClassesToValidate.stream().sorted().toList(),
                             c -> Const.of(classDescOf(c))));
 
-                    bc.yield(bc.new_(ConstructorDesc.of(HibernateBeanValidationConfigValidator.class, Set.class, Set.class),
-                            constraints, classes));
+                    LocalVar rootMappings = bc.localVar("rootMappings", bc.setOf(
+                            mappingsRequiringValidation.stream().sorted().toList(),
+                            c -> Const.of(classDescOf(c))));
+
+                    bc.yield(bc.new_(
+                            ConstructorDesc.of(HibernateBeanValidationConfigValidator.class, Set.class, Set.class, Set.class),
+                            constraints, classes, rootMappings));
                 });
             });
 

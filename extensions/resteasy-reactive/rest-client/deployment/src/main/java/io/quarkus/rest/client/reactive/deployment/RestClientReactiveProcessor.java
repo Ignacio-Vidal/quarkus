@@ -89,16 +89,17 @@ import io.quarkus.deployment.builditem.GeneratedClassBuildItem;
 import io.quarkus.deployment.builditem.GeneratedResourceBuildItem;
 import io.quarkus.deployment.builditem.GeneratedServiceProviderBuildItem;
 import io.quarkus.deployment.builditem.LaunchModeBuildItem;
+import io.quarkus.deployment.builditem.ModuleExportBuildItem;
 import io.quarkus.deployment.builditem.RunTimeConfigBuilderBuildItem;
 import io.quarkus.deployment.builditem.ShutdownContextBuildItem;
 import io.quarkus.deployment.builditem.StaticInitConfigBuilderBuildItem;
+import io.quarkus.deployment.builditem.nativeimage.ConstantBootstrapBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ServiceProviderBuildItem;
 import io.quarkus.deployment.execannotations.ExecutionModelAnnotationsAllowedBuildItem;
 import io.quarkus.gizmo2.Const;
 import io.quarkus.gizmo2.Expr;
 import io.quarkus.gizmo2.Gizmo;
-import io.quarkus.gizmo2.LambdaStrategy;
 import io.quarkus.gizmo2.LocalVar;
 import io.quarkus.gizmo2.ParamVar;
 import io.quarkus.gizmo2.creator.BlockCreator;
@@ -164,6 +165,12 @@ class RestClientReactiveProcessor {
             ClassDesc.of(Object.class.getName()), ClassDesc.of(Object.class.getName()), ClassDesc.of(Object.class.getName()));
 
     private record ProviderToRegister(String className, int priority, boolean fromTCCL) {
+    }
+
+    @BuildStep
+    void exportClientInternals(BuildProducer<ModuleExportBuildItem> exports) {
+        exports.produce(new ModuleExportBuildItem("io.quarkus.resteasy.reactive.client", "io.quarkus.rest.client",
+                "org.jboss.resteasy.reactive.client.impl"));
     }
 
     @BuildStep
@@ -313,6 +320,8 @@ class RestClientReactiveProcessor {
             List<ClientResponseFilterBuildItem> clientResponseFilters,
             BuildProducer<GeneratedBeanBuildItem> generatedBeansProducer,
             BuildProducer<GeneratedClassBuildItem> generatedClassesProducer,
+            BuildProducer<GeneratedResourceBuildItem> generatedResourcesProducer,
+            BuildProducer<ConstantBootstrapBuildItem> constantBootstraps,
             BuildProducer<UnremovableBeanBuildItem> unremovableBeansProducer,
             BuildProducer<ReflectiveClassBuildItem> reflectiveClassesProducer,
             BuildProducer<ExecutionModelAnnotationsAllowedBuildItem> executionModelAnnotationsAllowedProducer,
@@ -368,8 +377,9 @@ class RestClientReactiveProcessor {
         }
 
         MultivaluedMap<String, GeneratedClassResult> generatedProviders = new QuarkusMultivaluedHashMap<>();
-        Gizmo classGizmo = Gizmo.create(new GeneratedClassGizmo2Adaptor(generatedClassesProducer, null, null, true))
-                .withLambdaStrategy(LambdaStrategy.ANONYMOUS_CLASS);
+        Gizmo classGizmo = Gizmo
+                .create(new GeneratedClassGizmo2Adaptor(generatedClassesProducer, generatedResourcesProducer,
+                        null, constantBootstraps, true));
         populateClientExceptionMapperFromAnnotations(index, classGizmo, reflectiveClassesProducer,
                 executionModelAnnotationsAllowedProducer)
                 .forEach(generatedProviders::add);
@@ -416,8 +426,7 @@ class RestClientReactiveProcessor {
         }
 
         // Generate the class using Gizmo2
-        Gizmo gizmo = Gizmo.create(new GeneratedBeanGizmo2Adaptor(generatedBeansProducer))
-                .withLambdaStrategy(LambdaStrategy.ANONYMOUS_CLASS);
+        Gizmo gizmo = Gizmo.create(new GeneratedBeanGizmo2Adaptor(generatedBeansProducer));
         gizmo.class_(annotationRegisteredProvidersImpl, cc -> {
             cc.extends_(AnnotationRegisteredProviders.class);
             cc.addAnnotation(Singleton.class);
@@ -682,8 +691,7 @@ class RestClientReactiveProcessor {
             ClassDesc interfaceClassDesc = classDescOf(jaxrsInterface);
             ClassDesc wrapperBaseClassDesc = ClassDesc.of(RestClientReactiveCDIWrapperBase.class.getName());
 
-            Gizmo gizmo = Gizmo.create(new GeneratedBeanGizmo2Adaptor(generatedBeans))
-                    .withLambdaStrategy(LambdaStrategy.ANONYMOUS_CLASS);
+            Gizmo gizmo = Gizmo.create(new GeneratedBeanGizmo2Adaptor(generatedBeans));
             gizmo.class_(wrapperClassName, cc -> {
                 cc.extends_(RestClientReactiveCDIWrapperBase.class);
                 cc.implements_(interfaceClassDesc);

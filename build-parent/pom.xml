@@ -20,7 +20,7 @@
 
         <!-- These properties are needed in order for them to be resolvable by the generated projects -->
         <compiler-plugin.version>${version.compiler.plugin}</compiler-plugin.version>
-        <kotlin.version>2.4.10</kotlin.version>
+        <kotlin.version>2.4.20</kotlin.version>
         <ksp-gradle-plugin.version>2.2.10-2.0.2</ksp-gradle-plugin.version> <!-- Kotlin Symbol Processing plugin used in a test -->
         <dokka.version>2.2.0</dokka.version>
 
@@ -31,15 +31,16 @@
         <jandex-gradle-plugin.version>2.3.0</jandex-gradle-plugin.version>
 
         <asciidoctorj.version>3.0.0</asciidoctorj.version>
-        <htmlunit.version>5.5.0</htmlunit.version>
+        <htmlunit.version>5.6.0</htmlunit.version>
         <javaparser-core.version>3.28.2</javaparser-core.version>
-        <jdeparser.version>2.1.0</jdeparser.version>
+        <jdeparser2.version>2.1.0</jdeparser2.version>
+        <jdeparser.version>3.0.beta1</jdeparser.version>
         <subethasmtp.version>6.0.1</subethasmtp.version>
 
         <!-- Dev tools -->
         <freemarker.version>2.3.35</freemarker.version>
-        <commonmark.version>0.30.0</commonmark.version>
-        <jgit.version>7.7.1.202607240634-r</jgit.version>
+        <commonmark.version>0.30.1</commonmark.version>
+        <jgit.version>7.8.0.202609011348-r</jgit.version>
 
         <!-- Arquillian BOM -->
         <arquillian.version>1.7.0.Final</arquillian.version>
@@ -250,6 +251,11 @@
             <!-- Extension processor -->
             <dependency>
                 <groupId>org.jboss.jdeparser</groupId>
+                <artifactId>jdeparser</artifactId>
+                <version>${jdeparser2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.smallrye.jdeparser</groupId>
                 <artifactId>jdeparser</artifactId>
                 <version>${jdeparser.version}</version>
             </dependency>
@@ -763,6 +769,13 @@
                     <plugin>
                         <groupId>net.revelc.code</groupId>
                         <artifactId>impsort-maven-plugin</artifactId>
+                        <dependencies>
+                            <dependency>
+                                <groupId>com.github.javaparser</groupId>
+                                <artifactId>javaparser-core</artifactId>
+                                <version>${javaparser-core.version}</version>
+                            </dependency>
+                        </dependencies>
                         <configuration>
                             <removeUnused>true</removeUnused>
                         </configuration>
@@ -803,6 +816,13 @@
                     <plugin>
                         <groupId>net.revelc.code</groupId>
                         <artifactId>impsort-maven-plugin</artifactId>
+                        <dependencies>
+                            <dependency>
+                                <groupId>com.github.javaparser</groupId>
+                                <artifactId>javaparser-core</artifactId>
+                                <version>${javaparser-core.version}</version>
+                            </dependency>
+                        </dependencies>
                         <configuration>
                             <removeUnused>true</removeUnused>
                         </configuration>

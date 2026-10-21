@@ -1,6 +1,5 @@
 package io.quarkus.arc.deployment.staticmethods;
 
-import static io.quarkus.deployment.annotations.ExecutionTime.STATIC_INIT;
 import static org.jboss.jandex.gizmo2.Jandex2Gizmo.classDescOf;
 
 import java.lang.constant.ClassDesc;
@@ -54,16 +53,18 @@ import io.quarkus.arc.impl.Reflections;
 import io.quarkus.arc.processor.AnnotationLiteralProcessor;
 import io.quarkus.arc.processor.BeanProcessor;
 import io.quarkus.arc.processor.InterceptorInfo;
-import io.quarkus.arc.runtime.InterceptedStaticMethodsRecorder;
+import io.quarkus.arc.runtime.ArcRecorder;
+import io.quarkus.core.Phase;
+import io.quarkus.core.deployment.service.ServiceRegistrar;
 import io.quarkus.deployment.GeneratedClassGizmo2Adaptor;
 import io.quarkus.deployment.annotations.BuildProducer;
 import io.quarkus.deployment.annotations.BuildStep;
 import io.quarkus.deployment.annotations.Produce;
-import io.quarkus.deployment.annotations.Record;
 import io.quarkus.deployment.builditem.BytecodeTransformerBuildItem;
 import io.quarkus.deployment.builditem.GeneratedClassBuildItem;
 import io.quarkus.deployment.builditem.GeneratedResourceBuildItem;
 import io.quarkus.deployment.builditem.GeneratedServiceProviderBuildItem;
+import io.quarkus.deployment.builditem.nativeimage.ConstantBootstrapBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveMethodBuildItem;
 import io.quarkus.gizmo.AnnotatedElement;
 import io.quarkus.gizmo.ClassTransformer;
@@ -74,7 +75,6 @@ import io.quarkus.gizmo2.ClassOutput;
 import io.quarkus.gizmo2.Const;
 import io.quarkus.gizmo2.Expr;
 import io.quarkus.gizmo2.Gizmo;
-import io.quarkus.gizmo2.LambdaStrategy;
 import io.quarkus.gizmo2.LocalVar;
 import io.quarkus.gizmo2.ParamVar;
 import io.quarkus.gizmo2.Reflection2Gizmo;
@@ -87,6 +87,8 @@ import io.quarkus.gizmo2.desc.MethodDesc;
 public class InterceptedStaticMethodsProcessor {
 
     private static final Logger LOGGER = Logger.getLogger(InterceptedStaticMethodsProcessor.class);
+
+    private static final String INITIALIZER_CLASS_NAME = "io.quarkus.arc.runtime.InterceptedStaticMethodsInitializer";
 
     static final MethodDesc INTERCEPTED_STATIC_METHODS_REGISTER = MethodDesc.of(InterceptedStaticMethods.class,
             "register", void.class, String.class, InterceptedMethodMetadata.class);
@@ -185,6 +187,7 @@ public class InterceptedStaticMethodsProcessor {
             BuildProducer<GeneratedClassBuildItem> generatedClasses,
             BuildProducer<GeneratedResourceBuildItem> generatedResources,
             BuildProducer<GeneratedServiceProviderBuildItem> generatedServiceProviders,
+            BuildProducer<ConstantBootstrapBuildItem> constantBootstraps,
             BuildProducer<BytecodeTransformerBuildItem> transformers,
             BuildProducer<ReflectiveMethodBuildItem> reflectiveMethods) {
 
@@ -196,10 +199,10 @@ public class InterceptedStaticMethodsProcessor {
         Map<DotName, String> baseToGeneratedInitializer = new HashMap<>();
 
         ClassOutput classOutput = new GeneratedClassGizmo2Adaptor(generatedClasses, generatedResources,
-                generatedServiceProviders, new Predicate<String>() {
+                generatedServiceProviders, constantBootstraps, new Predicate<String>() {
                     @Override
                     public boolean test(String name) {
-                        if (InterceptedStaticMethodsRecorder.INITIALIZER_CLASS_NAME.equals(name)) {
+                        if (INITIALIZER_CLASS_NAME.equals(name)) {
                             return true;
                         }
 
@@ -217,8 +220,7 @@ public class InterceptedStaticMethodsProcessor {
                         return applicationClassPredicate.test(base);
                     }
                 });
-        Gizmo gizmo = Gizmo.create(classOutput)
-                .withLambdaStrategy(LambdaStrategy.ANONYMOUS_CLASS);
+        Gizmo gizmo = Gizmo.create(classOutput);
 
         // declaring class -> intercepted static methods
         Map<DotName, List<InterceptedStaticMethodBuildItem>> interceptedStaticMethodsMap = new HashMap<>();
@@ -267,7 +269,7 @@ public class InterceptedStaticMethodsProcessor {
         }
 
         // Generate a global initializer that calls all other initializers; this initializer must be loaded by the runtime ClassLoader
-        gizmo.class_(InterceptedStaticMethodsRecorder.INITIALIZER_CLASS_NAME, cc -> {
+        gizmo.class_(INITIALIZER_CLASS_NAME, cc -> {
             cc.final_();
 
             cc.staticInitializer(bc -> {
@@ -480,14 +482,23 @@ public class InterceptedStaticMethodsProcessor {
 
     }
 
-    @Record(STATIC_INIT)
     @BuildStep
     void callInitializer(BeanContainerBuildItem beanContainer, List<InterceptedStaticMethodBuildItem> interceptedStaticMethods,
-            InterceptedStaticMethodsRecorder recorder) {
+            ServiceRegistrar reg) {
         if (interceptedStaticMethods.isEmpty()) {
             return;
         }
-        recorder.callInitializer();
+        reg
+                .forService("io.quarkus.arc.intercepted-static-methods.init")
+                .atPhase(Phase.STATIC_INIT)
+                .require(io.quarkus.arc.ArcContainer.class)
+                .onStart((ctx, container) -> {
+                    ClassLoader cl = Thread.currentThread().getContextClassLoader();
+                    if (cl == null) {
+                        cl = ArcRecorder.class.getClassLoader();
+                    }
+                    Class.forName(INITIALIZER_CLASS_NAME, true, cl);
+                });
     }
 
 }

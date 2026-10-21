@@ -49,11 +49,11 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           # workflow_run.pull_requests is empty for pull requests opened from forks:
-          # look the pull request up from the head of the documentation build instead
+          # look the pull request up from the branch the documentation build ran on instead.
           if [[ -z "$RAW_PR_NUMBER" ]]; then
             RAW_PR_NUMBER=$(gh api -X GET "repos/${GITHUB_REPOSITORY}/pulls" \
               -f state=open -f head="${HEAD_OWNER}:${HEAD_BRANCH}" -f per_page=100 \
-              --jq 'map(select(.head.sha == env.HEAD_SHA)) | .[0].number // empty')
+              --jq '.[0].number // empty')
           fi
           if ! [[ "$RAW_PR_NUMBER" =~ ^[0-9]+$ ]]; then
             echo "Invalid PR number: $RAW_PR_NUMBER" >&2
@@ -72,7 +72,7 @@ jobs:
           rm -rf quarkus-main
 
       - name: Set up JDK
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -86,7 +86,7 @@ jobs:
           restore-keys: ${{ runner.os }}-npm-
 
       - name: Build with Maven
-        run: QUARKUS_ROQ_GENERATOR_BATCH=true QUARKUS_PROFILE=only-latest-guides mvn -B package quarkus:run -DskipTests
+        run: QUARKUS_ROQ_GENERATOR_BATCH=true QUARKUS_PROFILE=only-latest-guides ./mvnw -B package quarkus:run -DskipTests
 
       - name: Reduce the size of the website to be compatible with surge
         run: |

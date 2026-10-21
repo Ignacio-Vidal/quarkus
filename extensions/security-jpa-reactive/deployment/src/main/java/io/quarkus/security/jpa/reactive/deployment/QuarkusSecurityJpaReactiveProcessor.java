@@ -95,6 +95,7 @@ class QuarkusSecurityJpaReactiveProcessor {
         GeneratedBeanGizmo2Adaptor gizmoAdaptor = new GeneratedBeanGizmo2Adaptor(beanProducer);
 
         String name = jpaSecurityDefinition.annotatedClass.name() + "__JpaReactiveIdentityProviderImpl";
+        // todo: the gizmo-to-bean adapter doesn't know about constant bootstraps; use anon classes for lambdas for now
         Gizmo.create(gizmoAdaptor).withLambdaStrategy(LambdaStrategy.ANONYMOUS_CLASS).class_(name, cc -> {
             cc.extends_(JpaReactiveIdentityProvider.class);
             cc.addAnnotation(Singleton.class);
@@ -142,6 +143,7 @@ class QuarkusSecurityJpaReactiveProcessor {
         GeneratedBeanGizmo2Adaptor gizmoAdaptor = new GeneratedBeanGizmo2Adaptor(beanProducer);
 
         String name = jpaSecurityDefinition.annotatedClass.name() + "__JpaReactiveTrustedIdentityProviderImpl";
+        // todo: the gizmo-to-bean adapter doesn't know about constant bootstraps; use anon classes for lambdas for now
         Gizmo.create(gizmoAdaptor).withLambdaStrategy(LambdaStrategy.ANONYMOUS_CLASS).class_(name, cc -> {
             cc.extends_(JpaReactiveTrustedIdentityProvider.class);
             cc.addAnnotation(Singleton.class);

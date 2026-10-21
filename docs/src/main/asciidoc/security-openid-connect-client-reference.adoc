@@ -276,6 +276,9 @@ public class OidcClientResource {
 
 You can also inject a `TokenProvider` that is bound to a named OIDC client, see <<named-oidc-clients>>.
 
+`TokenProvider` can also acquire the access token with additional grant parameters, for example, `tokenProvider.getAccessToken(Map.of("scope", "openid"))`.
+The tokens acquired with different additional grant parameters are cached separately, see <<additional-grant-parameters-token-cache>>.
+
 When a Quarkus extension must acquire OIDC tokens by using one of the token grants supported by the OIDC client, it can also use `TokenProvider` while depending only on the OIDC Client SPI:
 
 . Add the following dependency:
@@ -984,6 +987,16 @@ Additionally, you can use the `quarkus.oidc-client.refresh-token-time-skew` prop
 
 For example, if this property is set to `3S` and the access token will expire in less than 3 seconds, the token is refreshed automatically.
 
+While such a preemptive refresh is in progress, the access token which is being refreshed may not have expired yet by the time the next request arrives.
+
+To allow such a token to be returned to the requests arriving in the meantime instead of making them wait for the refresh token endpoint to reply, configure the `quarkus.oidc-client.min-remaining-access-token-lifespan` property, which sets how much of the access token lifespan must be left for it to still be returned while it is being refreshed. Its value must be less than `quarkus.oidc-client.refresh-token-time-skew`.
+
+Using both `quarkus.oidc-client.refresh-token-time-skew` and `quarkus.oidc-client.min-remaining-access-token-lifespan` can be recommended for high-throughput applications, to minimize the risk of latency spikes while requests wait for a token refresh to complete, while also finding an optimal refresh skew period so that the token is not refreshed too early, does not expire in transit, and remains valid while the target service uses it.
+
+Using `quarkus.oidc-client.min-remaining-access-token-lifespan` is only recommended after you have proven its effectiveness with your own application throughput measurement tests.
+
+For example, with `quarkus.oidc-client.refresh-token-time-skew=60S` the refresh starts while a minute of the access token lifespan is left, and `quarkus.oidc-client.min-remaining-access-token-lifespan=30S` returns that token to the requests arriving during the refresh for as long as at least 30 seconds of token duration are left.
+
 By default, the OIDC client refreshes the token during the current request when it detects that the token has expired, or is nearly expired if the xref:#quarkus-oidc-client_quarkus-oidc-client-refresh-token-time-skew[refresh token time skew] is configured.
 Performance-critical applications might want to avoid waiting for a possible token refresh during incoming requests and configure an asynchronous token refresh instead.
 
@@ -1000,6 +1013,22 @@ If the access token needs to be refreshed but no refresh token is available, an 
 Some OpenID Connect providers do not return a refresh token in a `client_credentials` grant response.
 For example, starting with Keycloak 12, a refresh token is not returned by default for `client_credentials`.
 Providers might also restrict how many times a refresh token can be used.
+
+[[additional-grant-parameters-token-cache]]
+=== Caching tokens acquired with additional grant parameters
+
+`OidcClientRequestReactiveFilter`, `OidcClientRequestFilter`, `TokenProvider`, and `Tokens` producers always cache the tokens they acquire with the configured grant.
+Tokens acquired with additional grant parameters, for example, with `tokenProvider.getAccessToken(Map.of("scope", "openid"))` or by a custom filter, are cached per set of such parameters, because the parameters, for example, a requested `scope` or a subject token which has to be exchanged, can affect which tokens are issued.
+By default, each filter and each token producer caches the tokens of up to 15 sets of additional grant parameters.
+This limit is approximate, the cache can briefly exceed it when tokens are requested concurrently.
+When the limit is reached, the tokens which are least likely to be needed again, for example, expired or least recently used tokens, are evicted.
+The tokens acquired with the configured grant only, without additional grant parameters, are not counted toward this limit and are never evicted.
+Use the `quarkus.oidc-client.token-cache-max-size` property to change the limit per producer, for example, when many different subject tokens are exchanged:
+
+[source,properties]
+----
+quarkus.oidc-client.token-cache-max-size=30
+----
 
 [[revoke-access-tokens]]
 === Revoking access tokens
@@ -1231,10 +1260,13 @@ public class OidcClientRequestCustomFilter extends AbstractOidcClientRequestFilt
 }
 ----
 
+TIP: To make the most of the <<additional-grant-parameters-token-cache,token cache>>, let Quarkus load the client assertion with the `quarkus.oidc-client.credentials.jwt.token-path` property instead of using a custom filter.
+Quarkus then renews the client assertion without affecting the cached tokens.
+
 ==== SPIFFE JWT-SVID
 
 link:https://spiffe.io[SPIFFE] (Secure Production Identity Framework for Everyone) JWT-SVID tokens can be used as client assertions for client authentication.
-When the JWT source is set to `spiffe`, the `client_assertion_type` parameter is set to `urn:ietf:params:oauth:client-assertion-type:jwt-spiffe` instead of the JWT bearer `urn:ietf:params:oauth:client-assertion-type:jwt-bearer` value.
+When the JWT source is set to `spiffe-jwt`, the `client_assertion_type` parameter is set to `urn:ietf:params:oauth:client-assertion-type:jwt-spiffe` instead of the JWT bearer `urn:ietf:params:oauth:client-assertion-type:jwt-bearer` value.
 
 Enable it as follows:
 
