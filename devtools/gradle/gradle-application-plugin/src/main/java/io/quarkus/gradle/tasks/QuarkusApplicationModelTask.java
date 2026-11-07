@@ -156,7 +156,8 @@ public abstract class QuarkusApplicationModelTask extends DefaultTask {
 
     @TaskAction
     public void execute() throws IOException {
-        final DefaultProjectDescriptor projectDescriptor = getProjectDescriptor().get();
+        // Without the configuration cache, the module is shared with the project's other model tasks
+        final DefaultProjectDescriptor projectDescriptor = getProjectDescriptor().get().copy();
 
         final ResolvedDependencyBuilder appArtifact = getProjectArtifact(projectDescriptor);
 
