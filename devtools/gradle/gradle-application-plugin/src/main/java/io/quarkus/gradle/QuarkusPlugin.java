@@ -387,6 +387,14 @@ public class QuarkusPlugin implements Plugin<Project> {
                     SourceSet mainSourceSet = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME);
                     SourceSet testSourceSet = sourceSets.getByName(SourceSet.TEST_SOURCE_SET_NAME);
 
+                    // The application models only record the output directories that exist when they are built, so
+                    // without an order between them and the tasks writing those directories, their content, and the
+                    // cache keys of the tasks consuming them, depend on which task happens to run first. The main
+                    // model cannot wait for compileJava, which depends on code generation from it, so it records the
+                    // classes directory only if an earlier build left one.
+                    quarkusGenerateAppModelTask.configure(task -> task.dependsOn(resourcesTask));
+                    quarkusGenerateTestAppModelTask.configure(task -> task.dependsOn(classesTask));
+
                     quarkusGenerateCode.configure(task -> {
                         Configuration config = project.getConfigurations().getByName(
                                 ApplicationDeploymentClasspathBuilder.getBaseRuntimeConfigName(LaunchMode.NORMAL));
