@@ -24,6 +24,7 @@ import org.gradle.api.tasks.CompileClasspath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
@@ -100,9 +101,20 @@ public abstract class QuarkusGenerateCode extends QuarkusTaskWithExtensionView {
         return inputDirectories;
     }
 
-    @InputFile
-    @PathSensitive(PathSensitivity.RELATIVE)
+    /**
+     * The serialized application model. Internal, since it holds absolute paths, which would tie this task's cache
+     * key to the checkout directory: its {@linkplain #getApplicationModelFingerprint() fingerprint} is the input.
+     */
+    @Internal
     public abstract RegularFileProperty getApplicationModel();
+
+    /**
+     * The fingerprint of the {@linkplain #getApplicationModel() application model}, which stands in for it as an
+     * input.
+     */
+    @InputFile
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract RegularFileProperty getApplicationModelFingerprint();
 
     @OutputDirectory
     public abstract DirectoryProperty getGeneratedOutputDirectory();
