@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -66,6 +67,7 @@ import io.quarkus.bootstrap.workspace.SourceDir;
 import io.quarkus.bootstrap.workspace.WorkspaceModule;
 import io.quarkus.bootstrap.workspace.WorkspaceModuleId;
 import io.quarkus.fs.util.ZipUtils;
+import io.quarkus.gradle.tooling.ApplicationModelFingerprint;
 import io.quarkus.gradle.tooling.DefaultProjectDescriptor;
 import io.quarkus.gradle.tooling.ProjectDescriptor;
 import io.quarkus.gradle.tooling.ToolingUtils;
@@ -150,6 +152,21 @@ public abstract class QuarkusApplicationModelTask extends DefaultTask {
     @OutputFile
     public abstract RegularFileProperty getApplicationModel();
 
+    /**
+     * The {@linkplain ApplicationModelFingerprint fingerprint} of the application model, which the tasks consuming the
+     * model hash instead of the model itself, since the model holds absolute paths.
+     */
+    @OutputFile
+    public abstract RegularFileProperty getApplicationModelFingerprint();
+
+    /**
+     * The directories whose location the {@linkplain #getApplicationModelFingerprint() fingerprint} leaves out, keyed
+     * by placeholder name. Internal, since they are absolute paths, which would make this task depend on the checkout
+     * directory.
+     */
+    @Internal
+    public abstract MapProperty<String, File> getFingerprintRoots();
+
     public QuarkusApplicationModelTask() {
         getProjectBuildFile().set(getProject().getBuildFile());
     }
@@ -181,6 +198,11 @@ public abstract class QuarkusApplicationModelTask extends DefaultTask {
 
         DefaultApplicationModel model = modelBuilder.build();
         ToolingUtils.serializeAppModel(model, getApplicationModel().get().getAsFile().toPath());
+
+        final Map<String, Path> fingerprintRoots = new HashMap<>();
+        getFingerprintRoots().get().forEach((name, dir) -> fingerprintRoots.put(name, dir.toPath()));
+        ApplicationModelFingerprint.write(model, fingerprintRoots,
+                getApplicationModelFingerprint().get().getAsFile().toPath());
     }
 
     private ResolvedDependencyBuilder getProjectArtifact(DefaultProjectDescriptor projectDescriptor) {
