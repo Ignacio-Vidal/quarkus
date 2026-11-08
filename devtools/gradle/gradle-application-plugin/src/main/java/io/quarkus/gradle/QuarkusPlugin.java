@@ -33,6 +33,7 @@ import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskContainer;
@@ -294,6 +295,7 @@ public class QuarkusPlugin implements Plugin<Project> {
         TaskProvider<QuarkusBuild> quarkusBuild = tasks.register(QUARKUS_BUILD_TASK_NAME, QuarkusBuild.class, build -> {
             configureQuarkusBuildTask(project, build, quarkusBuildAppModelTask, serviceProvider, customFs, quarkusExt);
             build.dependsOn(quarkusBuildDependencies, quarkusBuildCacheableAppParts);
+            build.getApplicationParts().from(quarkusBuildCacheableAppParts, quarkusBuildDependencies);
             build.getOutputs().doNotCacheIf(
                     "Only collects and combines the outputs of " + QUARKUS_BUILD_APP_PARTS_TASK_NAME + " and "
                             + QUARKUS_BUILD_DEP_TASK_NAME + ", see 'cacheLargeArtifacts' in the 'quarkus' Gradle extension " +
@@ -386,6 +388,14 @@ public class QuarkusPlugin implements Plugin<Project> {
                     SourceSetContainer sourceSets = project.getExtensions().getByType(SourceSetContainer.class);
                     SourceSet mainSourceSet = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME);
                     SourceSet testSourceSet = sourceSets.getByName(SourceSet.TEST_SOURCE_SET_NAME);
+
+                    // The application models only record the output directories that exist when they are built, so
+                    // without an order between them and the tasks writing those directories, their content, and the
+                    // cache keys of the tasks consuming them, depend on which task happens to run first. The main
+                    // model cannot wait for compileJava, which depends on code generation from it, so it records the
+                    // classes directory only if an earlier build left one.
+                    quarkusGenerateAppModelTask.configure(task -> task.dependsOn(resourcesTask));
+                    quarkusGenerateTestAppModelTask.configure(task -> task.dependsOn(classesTask));
 
                     quarkusGenerateCode.configure(task -> {
                         Configuration config = project.getConfigurations().getByName(
@@ -483,9 +493,17 @@ public class QuarkusPlugin implements Plugin<Project> {
                                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
                                 "--add-exports=java.base/jdk.internal.module=ALL-UNNAMED");
 
-                        t.getInputs().files(quarkusGenerateTestAppModelTask);
+                        // The fingerprint rather than the model itself, since the model holds absolute paths.
+                        // Named, since an unnamed input is hashed with its absolute path.
+                        t.getInputs()
+                                .file(quarkusGenerateTestAppModelTask
+                                        .flatMap(QuarkusApplicationModelTask::getApplicationModelFingerprint))
+                                .withPropertyName("quarkusTestAppModelFingerprint")
+                                .withPathSensitivity(PathSensitivity.NONE);
                         // Register matching compose files from project root as inputs
-                        t.getInputs().files(composeDevFiles(project));
+                        t.getInputs().files(composeDevFiles(project))
+                                .withPropertyName("quarkusComposeDevFiles")
+                                .withPathSensitivity(PathSensitivity.RELATIVE);
                         // Quarkus test configuration action which should be executed before any Quarkus test
                         t.doFirst(new BeforeTestAction(
                                 project.getProjectDir(),
@@ -650,6 +668,17 @@ public class QuarkusPlugin implements Plugin<Project> {
                 .deploymentClasspathSnapshot(classpath.getDeploymentConfiguration().getIncoming().getArtifacts(),
                         projectDir)));
         task.getApplicationModel().set(project.getLayout().getBuildDirectory().file(quarkusModelFile));
+        task.getApplicationModelFingerprint().set(project.getLayout().getBuildDirectory()
+                .file(quarkusModelFile.substring(0, quarkusModelFile.lastIndexOf('.')) + ".fingerprint"));
+        // The directories most absolute paths in the model are under. A path under none of them stays absolute in
+        // the fingerprint, which costs a cache miss in another checkout, but never a wrong cache hit.
+        task.getFingerprintRoots().put("root-project-dir", project.getRootDir());
+        task.getFingerprintRoots().put("gradle-user-home", project.getGradle().getGradleUserHomeDir());
+        task.getFingerprintRoots().put("maven-local-repository", project.getProviders()
+                .systemProperty("maven.repo.local")
+                .orElse(project.getProviders().systemProperty("user.home")
+                        .map(home -> home + File.separator + ".m2" + File.separator + "repository"))
+                .map(File::new));
     }
 
     private static void configureQuarkusBuildTask(Project project, QuarkusBuildTask task,
@@ -658,6 +687,8 @@ public class QuarkusPlugin implements Plugin<Project> {
             Provider<CustomFileSystemOperations> customFs,
             QuarkusPluginExtension quarkusExt) {
         task.getApplicationModel().set(quarkusGenerateAppModelTask.flatMap(QuarkusApplicationModelTask::getApplicationModel));
+        task.getApplicationModelFingerprint()
+                .set(quarkusGenerateAppModelTask.flatMap(QuarkusApplicationModelTask::getApplicationModelFingerprint));
         SourceSet mainSourceSet = getSourceSet(project, SourceSet.MAIN_SOURCE_SET_NAME);
         task.getAdditionalForcedProperties().set(serviceProvider);
         task.usesService(serviceProvider);
@@ -690,6 +721,8 @@ public class QuarkusPlugin implements Plugin<Project> {
         }
         task.getApplicationModel()
                 .set(applicationModelTaskTaskProvider.flatMap(QuarkusApplicationModelTask::getApplicationModel));
+        task.getApplicationModelFingerprint()
+                .set(applicationModelTaskTaskProvider.flatMap(QuarkusApplicationModelTask::getApplicationModelFingerprint));
         task.getGeneratedOutputDirectory().set(generatedSources.getJava().getClassesDirectory());
         task.getCachingRelevantInput()
                 .set(quarkusExt.cachingRelevantProperties(quarkusExt.getCachingRelevantProperties().get()));

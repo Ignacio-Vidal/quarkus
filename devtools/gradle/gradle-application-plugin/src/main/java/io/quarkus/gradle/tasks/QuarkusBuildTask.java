@@ -210,9 +210,20 @@ public abstract class QuarkusBuildTask extends QuarkusTaskWithExtensionView {
 
     }
 
-    @InputFile
-    @PathSensitive(PathSensitivity.RELATIVE)
+    /**
+     * The serialized application model. Internal, since it holds absolute paths, which would tie this task's cache
+     * key to the checkout directory: its {@linkplain #getApplicationModelFingerprint() fingerprint} is the input.
+     */
+    @Internal
     public abstract RegularFileProperty getApplicationModel();
+
+    /**
+     * The fingerprint of the {@linkplain #getApplicationModel() application model}, which stands in for it as an
+     * input.
+     */
+    @InputFile
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract RegularFileProperty getApplicationModelFingerprint();
 
     ApplicationModel resolveAppModelForBuild() {
         try {
