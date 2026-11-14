@@ -14,26 +14,36 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import io.quarkus.oidc.client.OidcClient;
 import io.quarkus.oidc.client.Tokens;
 import io.quarkus.oidc.client.runtime.InMemoryOidcTestClient.Call;
 import io.quarkus.oidc.client.runtime.InMemoryOidcTestClient.Expiry;
+import io.smallrye.common.vertx.VertxContext;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.Context;
+import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 
 class TokensHelperTest {
@@ -1133,6 +1143,71 @@ class TokensHelperTest {
     }
 
     /**
+     * The callers waiting for a refresh share the same token request, but each one must be resumed on its own
+     * duplicated context rather than on the context the token request completes on, as that context may belong
+     * to another request. This applies to a failed refresh too.
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = { false, true })
+    void testCallersWaitingForRefreshResumedOnTheirOwnContext(boolean refreshFails) throws Exception {
+        // Less than the minimum lifespan is left, so the tokens being refreshed are not served and every caller waits
+        Tokens current = tokens("current", 8, TIME_SKEW, Duration.ofSeconds(9));
+        assertThat(current.isAccessTokenWithinRefreshInterval()).isTrue();
+        assertThat(current.hasMinRemainingAccessTokenLifespan()).isFalse();
+
+        BlockingOidcClient client = new BlockingOidcClient(tokens("refreshed", 300),
+                refreshFails ? new IllegalStateException("token endpoint unavailable") : null);
+        TokensHelper helper = new TokensHelper();
+        helper.initTokens(new ImmediateOidcClient(current), Map.of());
+
+        try (ResumedContexts contexts = new ResumedContexts()) {
+            contexts.getTokens(contexts.first, "starting", () -> helper.getTokens(client, Map.of(), false));
+            client.awaitInFlight();
+
+            contexts.getTokens(contexts.second, "below-minimum", () -> helper.getTokens(client, Map.of(), false));
+            contexts.getTokens(contexts.second, "waitForRefresh", () -> helper.getTokens(client, Map.of(), false, true));
+            // The first forced caller stops the tokens being refreshed from being served, the next one joins the refresh
+            contexts.getTokens(contexts.second, "forced", () -> helper.getTokens(client, Map.of(), true));
+            contexts.getTokens(contexts.second, "forced-again", () -> helper.getTokens(client, Map.of(), true));
+
+            client.release.countDown();
+            contexts.awaitCompleted(5);
+            assertThat(contexts.resumedOn("starting")).containsSame(contexts.first);
+            assertThat(contexts.resumedOn("below-minimum")).containsSame(contexts.second);
+            assertThat(contexts.resumedOn("waitForRefresh")).containsSame(contexts.second);
+            assertThat(contexts.resumedOn("forced")).containsSame(contexts.second);
+            assertThat(contexts.resumedOn("forced-again")).containsSame(contexts.second);
+            assertThat(contexts.failed).hasSize(refreshFails ? 5 : 0);
+            assertThat(client.acquisitions.get()).isEqualTo(1);
+        }
+    }
+
+    /**
+     * The callers waiting for the first tokens share the same token request too, so each one must be resumed on
+     * its own duplicated context as well, whether the tokens are acquired or not.
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = { false, true })
+    void testCallersWaitingForFirstTokensResumedOnTheirOwnContext(boolean acquisitionFails) throws Exception {
+        BlockingOidcClient client = new BlockingOidcClient(tokens("acquired", 300),
+                acquisitionFails ? new IllegalStateException("token endpoint unavailable") : null);
+        TokensHelper helper = new TokensHelper();
+
+        try (ResumedContexts contexts = new ResumedContexts()) {
+            contexts.getTokens(contexts.first, "acquiring", () -> helper.getTokens(client, Map.of(), false));
+            client.awaitInFlight();
+            contexts.getTokens(contexts.second, "waiting", () -> helper.getTokens(client, Map.of(), false));
+
+            client.release.countDown();
+            contexts.awaitCompleted(2);
+            assertThat(contexts.resumedOn("acquiring")).containsSame(contexts.first);
+            assertThat(contexts.resumedOn("waiting")).containsSame(contexts.second);
+            assertThat(contexts.failed).hasSize(acquisitionFails ? 2 : 0);
+            assertThat(client.acquisitions.get()).isEqualTo(1);
+        }
+    }
+
+    /**
      * Tokens which are still valid but too close to expiry are not served while a refresh is in
      * flight: they could expire in transit, or while the target service handles the request. Such a
      * caller waits for the refreshed tokens instead.
@@ -1420,6 +1495,52 @@ class TokensHelperTest {
         @Override
         public void close() {
             // no-op in the test
+        }
+    }
+
+    /**
+     * Two duplicated contexts standing for two requests, and the context each caller is resumed on once its tokens
+     * are acquired or have failed to be.
+     */
+    private static final class ResumedContexts implements AutoCloseable {
+
+        private final Vertx vertx = Vertx.vertx();
+        final Context first = VertxContext.createNewDuplicatedContext(vertx.getOrCreateContext());
+        final Context second = VertxContext.createNewDuplicatedContext(vertx.getOrCreateContext());
+        final Set<String> failed = ConcurrentHashMap.newKeySet();
+        private final Map<String, Optional<Context>> resumedOn = new ConcurrentHashMap<>();
+        private final Semaphore completed = new Semaphore(0);
+
+        /** Gets the tokens on the given context, and returns once the caller has subscribed to them. */
+        void getTokens(Context context, String caller, Supplier<Uni<Tokens>> tokens) throws InterruptedException {
+            CountDownLatch subscribed = new CountDownLatch(1);
+            context.runOnContext(ignored -> {
+                tokens.get().subscribe().with(t -> resumed(caller), t -> {
+                    failed.add(caller);
+                    resumed(caller);
+                });
+                subscribed.countDown();
+            });
+            assertThat(subscribed.await(10, TimeUnit.SECONDS)).as("%s should have subscribed", caller).isTrue();
+        }
+
+        private void resumed(String caller) {
+            resumedOn.put(caller, Optional.ofNullable(Vertx.currentContext()));
+            completed.release();
+        }
+
+        void awaitCompleted(int callers) throws InterruptedException {
+            assertThat(completed.tryAcquire(callers, 10, TimeUnit.SECONDS)).as("every caller should have completed")
+                    .isTrue();
+        }
+
+        Optional<Context> resumedOn(String caller) {
+            return resumedOn.get(caller);
+        }
+
+        @Override
+        public void close() throws Exception {
+            vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
         }
     }
 }

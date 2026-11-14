@@ -13,6 +13,8 @@ import org.jboss.logging.Logger;
 import io.quarkus.oidc.client.OidcClient;
 import io.quarkus.oidc.client.Tokens;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.Context;
+import io.vertx.core.Vertx;
 
 public class TokensHelper {
     private static final Logger LOG = Logger.getLogger(TokensHelper.class);
@@ -79,6 +81,7 @@ public class TokensHelper {
 
     private Uni<Tokens> getTokens(OidcClient oidcClient, Map<String, String> additionalParameters,
             boolean forceNewTokens, boolean waitForRefresh, TokenRequestStateHolder holder) {
+        final Context context = Vertx.currentContext();
         TokenRequestState currentState = null;
         TokenRequestState newState = null;
         //if the tokens are expired we refresh them in an async manner
@@ -90,14 +93,14 @@ public class TokensHelper {
                 //note that this can still happen at runtime as if there is an error then the state will be null
                 newState = new TokenRequestState(prepareUni(oidcClient.getTokens(additionalParameters), holder));
                 if (tokenRequestStateUpdater.compareAndSet(holder, currentState, newState)) {
-                    return newState.tokenUni;
+                    return emitOn(newState.tokenUni, context);
                 }
                 //rerun the CAS loop
             } else if (forceNewTokens) {
                 if (currentState.tokenUni != null) {
                     // A request is already in flight, wait for it instead of starting another one
                     if (currentState.tokensBeingRefreshed == null) {
-                        return currentState.tokenUni;
+                        return emitOn(currentState.tokenUni, context);
                     }
                     // Stop serving the old tokensBeingRefreshed and make clients wait for the refresh in flight
                     newState = new TokenRequestState(currentState.tokenUni);
@@ -107,7 +110,7 @@ public class TokensHelper {
                     newState = new TokenRequestState(prepareUni(oidcClient.getTokens(additionalParameters), holder));
                 }
                 if (tokenRequestStateUpdater.compareAndSet(holder, currentState, newState)) {
-                    return newState.tokenUni;
+                    return emitOn(newState.tokenUni, context);
                 }
                 //rerun the CAS loop
             } else if (currentState.tokenUni != null) {
@@ -123,7 +126,7 @@ public class TokensHelper {
                                 tokensBeingRefreshed.getClientId(), tokensBeingRefreshed.getMinRemainingAccessTokenLifespan());
                     }
                 }
-                return currentState.tokenUni;
+                return emitOn(currentState.tokenUni, context);
             } else {
                 final Tokens tokens = currentState.tokens;
                 final boolean accessTokenExpired = tokens.isAccessTokenExpired();
@@ -152,7 +155,7 @@ public class TokensHelper {
                                             tokensBeingRefreshed.getClientId()));
                             return Uni.createFrom().item(tokensBeingRefreshed);
                         }
-                        return newState.tokenUni;
+                        return emitOn(newState.tokenUni, context);
                     }
                     //rerun the CAS loop
                 } else {
@@ -160,6 +163,15 @@ public class TokensHelper {
                 }
             }
         }
+    }
+
+    // The token request is shared by all the callers waiting for it and completes on the context of the caller which
+    // subscribed to it first, so each caller is resumed on its own context, as the other one may belong to another request
+    private static Uni<Tokens> emitOn(Uni<Tokens> tokenUni, Context context) {
+        if (context == null) {
+            return tokenUni;
+        }
+        return tokenUni.emitOn(command -> context.runOnContext(ignored -> command.run()));
     }
 
     private Uni<Tokens> prepareUni(Uni<Tokens> tokens, TokenRequestStateHolder holder) {
