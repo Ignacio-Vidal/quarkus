@@ -30,7 +30,7 @@
         <jandex.version>3.6.1</jandex.version>
         <jandex-gradle-plugin.version>2.3.0</jandex-gradle-plugin.version>
 
-        <asciidoctorj.version>3.0.0</asciidoctorj.version>
+        <asciidoctorj.version>3.0.1</asciidoctorj.version>
         <htmlunit.version>5.7.0</htmlunit.version>
         <javaparser-core.version>3.28.2</javaparser-core.version>
         <jdeparser2.version>2.1.0</jdeparser2.version>
@@ -137,7 +137,7 @@
         <keycloak.server.version>26.8.2</keycloak.server.version>
         <keycloak.docker.image>quay.io/keycloak/keycloak:${keycloak.server.version}</keycloak.docker.image>
 
-        <unboundid-ldap.version>7.0.5</unboundid-ldap.version>
+        <unboundid-ldap.version>7.0.6</unboundid-ldap.version>
 
         <assertj.version>3.27.7</assertj.version>
         <!-- Keep in sync with VineflowerDecompiler.DEFAULT_VINEFLOWER_VERSION -->
@@ -206,7 +206,7 @@
         <jakarta.jms-api.version>3.1.0</jakarta.jms-api.version>
 
         <!-- Quarkus Analytics -->
-        <properties-maven-plugin.version>1.3.1</properties-maven-plugin.version>
+        <properties-maven-plugin.version>1.4.0</properties-maven-plugin.version>
         <quarkus.analytics.disabled>true</quarkus.analytics.disabled>
 
         <!-- If PTS is enabled at the global level  -->
