@@ -4,11 +4,14 @@ plugins {
     id("maven-publish")
 }
 
+// the Quarkus release the plugin is built against, so the plugin can be published under its own version
+val quarkusVersion = findProperty("quarkusVersion") ?: version
+
 dependencies {
     api(gradleApi())
 
     val libs = project.the<VersionCatalogsExtension>().named("libs")
-    implementation(platform("io.quarkus:quarkus-bom:$version"))
+    implementation(platform("io.quarkus:quarkus-bom:$quarkusVersion"))
 
     implementation(libs.getLibrary("quarkus-bootstrap-core"))
     implementation(libs.getLibrary("quarkus-bootstrap-gradle-resolver"))
@@ -20,7 +23,7 @@ dependencies {
     testFixturesApi(libs.getLibrary("junit-api"))
     testFixturesApi(libs.getLibrary("assertj"))
 
-    testFixturesApi(platform("io.quarkus:quarkus-bom:$version"))
+    testFixturesApi(platform("io.quarkus:quarkus-bom:$quarkusVersion"))
     testFixturesApi(libs.getLibrary("quarkus-devtools-testing"))
 }
 
