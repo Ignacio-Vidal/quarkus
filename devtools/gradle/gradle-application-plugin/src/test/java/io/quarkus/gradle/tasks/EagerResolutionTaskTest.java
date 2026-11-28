@@ -2,29 +2,27 @@ package io.quarkus.gradle.tasks;
 
 import static io.quarkus.gradle.QuarkusPlugin.QUARKUS_BUILD_TASK_NAME;
 import static io.quarkus.gradle.QuarkusPlugin.QUARKUS_GENERATE_CODE_TASK_NAME;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.gradle.testkit.runner.TaskOutcome.FROM_CACHE;
 import static org.gradle.testkit.runner.TaskOutcome.SUCCESS;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import org.apache.commons.io.FileUtils;
 import org.gradle.testkit.runner.BuildResult;
-import org.gradle.testkit.runner.GradleRunner;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-public class EagerResolutionTaskTest {
+import io.quarkus.gradle.testing.BaseGradleTest;
 
-    @TempDir
-    Path testProjectDir;
+public class EagerResolutionTaskTest extends BaseGradleTest {
 
     private static Stream<String> tasksToTest() {
         return Stream.of(
@@ -67,16 +65,8 @@ public class EagerResolutionTaskTest {
             e.printStackTrace();
         }
 
-        BuildResult firstBuild = buildResult(taskName);
-        assertEquals(SUCCESS, firstBuild.task(":quarkusGenerateCode").getOutcome());
-
-    }
-
-    private BuildResult buildResult(String task) {
-        return GradleRunner.create()
-                .withPluginClasspath()
-                .withProjectDir(testProjectDir.toFile())
-                .withArguments(task, "--info", "--stacktrace", "--build-cache")
-                .build();
+        BuildResult firstBuild = buildResult(Map.of(), taskName);
+        // Every parameter builds the same project, so the ones after the first can reuse its cached code generation
+        assertThat(firstBuild.task(":quarkusGenerateCode").getOutcome()).isIn(SUCCESS, FROM_CACHE);
     }
 }
